@@ -68,6 +68,7 @@
           var minD = a.r + b.r;
           var d2 = dx * dx + dy * dy;
           if (d2 >= minD * minD || d2 === 0) continue;
+          if (a.kind === "striker" || b.kind === "striker") events.push({ type: "contact", a: a, b: b });
           var d = Math.sqrt(d2);
           var nx = dx / d;
           var ny = dy / d;

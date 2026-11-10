@@ -6,31 +6,45 @@ A top-view carrom board with a coloured wooden frame, a striker and carrom men. 
 
 Double-click `index.html`.
 
-## Game modes
+## Game modes and sides
 
-- **1 Player:** you against the computer. Choose Easy, Medium or Expert.
-- **2 Players:** two people on one device, taking turns.
-- **4 Players:** four people on one device, free-for-all.
+- **1 Player:** you against the computer. You play from the bottom line, the computer from the top line.
+- **2 Players:** two people on one device, from opposite lines (bottom and top).
+- **4 Players:** four people on one device, each from one side of the board (bottom, right, top, left). Each side has its own line and a label: PLAYER 1, PLAYER 2, PLAYER 3, PLAYER 4.
 
-## How to play
+Each player moves the striker only along their own line. The active line is outlined in gold.
 
-1. **Place the striker:** drag it along the baseline.
-2. **Shoot:** press on the striker, pull back, and let go. The further you pull, the more power. A dashed line shows the direction.
-3. **Scoring:** black coin 1 point, white coin 2 points, queen 5 points.
-4. **Keep the turn:** a legal pocket keeps your turn. A miss passes it.
-5. **Foul:** pocketing the striker costs a point, and the coins pocketed in that shot go back on the board.
-6. **Queen:** pocket it with a white coin in the same shot to cover it. Otherwise cover it with a white coin in your next shot, or it goes back on the board.
-7. **Game over:** when no coins are left on the board. The highest score wins.
+## Colours: hit white or black
 
-## Sound
+- Each player hits one colour. In a 1-player game you choose white or black on the menu. In a 2-player game player 1 hits white and player 2 hits black. In a 4-player game the seats alternate white, black, white, black.
+- The label on the frame and the hint under the board show the colour, for example **HIT WHITE**.
+- **The striker's first contact must be a coin of your colour** (the queen counts for either colour). If the striker first touches the other colour, or touches nothing, it is a foul.
+- The aim guide shows the first coin the striker will touch. It turns green with a tick when that coin is yours, and red with a cross when it isn't.
+- When no coin of your colour is left on the board, your first touch is free.
 
-Every sound is generated in the browser with the Web Audio API, so no audio files are downloaded. Hits are louder the harder the pieces collide. A compressor keeps the loudest moments from distorting. Use the Sound button and the Volume slider to change it. Your setting is remembered in this browser.
+## Scoring and fouls
+
+- Black coin 1 point, white coin 2 points, queen 5 points.
+- A legal pocket keeps your turn. A shot that pockets nothing passes the turn.
+- A foul (striker pocketed, wrong first touch, or no touch) costs 1 point, the coins pocketed in that shot go back on the board, and the turn passes.
+- **Queen:** pocket it with one of your own coins in the same shot to cover it. Otherwise cover it with your colour in your next shot, or it goes back on the board.
+- The game ends when no coin or queen is left on the board. The highest score wins.
+
+## How to shoot
+
+1. **Place the striker:** drag it along your line.
+2. **Aim and shoot:** press on the striker, pull back, and let go. The further you pull, the stronger the shot (full power at 120 units). The dashed line shows the direction, and the guide shows the first hit.
 
 ## The computer
 
-- **Easy, Medium, Expert** differ in how accurately they aim and how much power they use, and in how willing they are to play a shot that a coin might block.
-- It finds every pocket shot, places the striker on the baseline so that its path runs head-on into the target, and sizes the power from the distance the target must travel.
-- In tests it pocketed a clean single coin in about 3 out of 4 shots.
+- **Easy, Medium, Expert** differ in how accurately they aim and how often they risk a shot that could touch the wrong colour.
+- It plans from its own line, aims the striker head-on at the target, and sizes the power from the distance the coin must travel.
+- When no clean pocket shot exists, it plays a safety shot: a straight shot at the nearest coin of its colour, so the first touch is legal.
+- It thinks and shoots faster than before.
+
+## Sound
+
+Every sound is generated in the browser with the Web Audio API, so no audio files are downloaded. Hits are louder the harder the pieces collide. A compressor keeps the loudest moments from distorting. Use the Sound button and the Volume slider to change it.
 
 ## Tests
 
@@ -38,23 +52,23 @@ Every sound is generated in the browser with the Web Audio API, so no audio file
 node --test tests/carrom.test.js
 ```
 
-The 21 tests cover: physics (friction, collisions, cushions, pockets, free spots), rules (scoring, turns, fouls, queen cover and return, game end, player counts, turn order), and the computer (shot finding, velocity direction, expert accuracy).
+The 28 tests cover: physics (friction, collisions, cushions, pockets, the striker's first contact, free spots), rules (colours, first-touch fouls, the free shot when your colour is gone, scoring, turns, the queen rules, game end, player counts, turn order), the side mapping (every side maps to the bottom and back), and the computer (shot finding for each colour, shots from the far side, safety, and pocket rates on all four sides).
 
-A full-game simulation with computer players only was also run during development. Games finished, and no invalid positions appeared.
+Full games between computer players were also simulated during development. They finish in about 150 shots, with no invalid positions.
 
 ## Structure
 
 ```
-index.html              menu, match screen, scoreboard, power meter, game-over overlay, footer
-css/app.css             wooden theme, glass panels, responsive board, footer
-js/config.js            board size, physics, scoring, difficulty levels, colours
-js/physics.js           pieces, collisions, cushions, pockets, friction (pure)
-js/rules.js             turns, scoring, fouls, queen rules, game end (pure)
-js/ai.js                computer shot finding and difficulty (pure)
+index.html              menu (modes, colour, level), match screen, scoreboard, power, guide, footer
+css/app.css             wooden theme, glass panels, responsive board, guide colours, footer
+js/config.js            board size, physics, sides, seat colours, difficulty levels, colours
+js/physics.js           pieces, collisions, cushions, pockets, friction, contact events (pure)
+js/rules.js             colours, first-touch fouls, free shot, scoring, turns, queen rules (pure)
+js/ai.js                computer shots from any side, safety shots, difficulty (pure)
 js/sound.js             generated sound with volume and mute
-js/render.js            top-view drawing on a canvas
+js/render.js            top view: frame, sides, labels, pieces, aim and first-hit guide
 js/app.js               menus, input (mouse and touch), match loop, HUD
-tests/carrom.test.js    tests for physics, rules and the computer
+tests/carrom.test.js    tests for physics, rules, sides and the computer
 ```
 
 ## Notes

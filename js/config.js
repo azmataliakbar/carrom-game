@@ -14,11 +14,26 @@
 
     // Physics
     stepS: 1 / 120,          // fixed physics step, seconds
-    friction: 0.9,           // speed decay per second (exponential drag)
+    friction: 0.75,          // speed decay per second (exponential drag): coins slide further than before
     restitution: 0.82,       // bounce between pieces
     wallRestitution: 0.7,    // bounce off the cushions
     minSpeed: 8,             // below this a piece is at rest
-    maxShot: 1600,           // striker speed at full power, units per second
+    maxShot: 2100,           // striker speed at full power, units per second (stronger than before)
+    pullFull: 120,           // how far the striker must be pulled back for full power (smaller = easier to hit hard)
+    thinkMs: 450,            // computer pause before it aims (shorter = faster play)
+    launchMs: 300,           // computer pause from aim to shot
+
+    // Sides of the board. A side is a baseline with its own striker line. Index = side id.
+    //   side 0 = bottom, 2 = top (opposite), 1 = right, 3 = left.
+    sides: [
+      { id: 0, label: "Bottom" },
+      { id: 1, label: "Right" },
+      { id: 2, label: "Top" },
+      { id: 3, label: "Left" }
+    ],
+
+    // Colour each seat hits. The first contact of the striker must be a coin of this colour (or the queen).
+    seatColours: ["white", "black", "white", "black"],
     settleTimeoutS: 14,      // safety: end a shot after this long even if something keeps moving
 
     // Scoring (standard carrom values)
@@ -29,7 +44,7 @@
     difficulty: {
       easy:   { angle: 0.14, power: 0.28, blockPenalty: 0.2, label: "Easy" },
       medium: { angle: 0.05, power: 0.12, blockPenalty: 0.6, label: "Medium" },
-      hard:   { angle: 0.015, power: 0.04, blockPenalty: 1.0, label: "Expert" }
+      hard:   { angle: 0.0005, power: 0.03, blockPenalty: 1.0, label: "Expert" }
     },
 
     // Visual palette

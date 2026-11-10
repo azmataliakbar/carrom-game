@@ -274,3 +274,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 
 /* The board is sized by CSS and kept square; the drawing buffer follows its real size. */
 #board { width: 100%; max-width: 560px; height: auto; aspect-ratio: 1 / 1; }
+
+/* First-contact guide: says which colour the striker will touch first */
+.guide { margin: 0; min-height: 1.3em; text-align: center; font-size: 14px; font-weight: 800; color: var(--gold); overflow-wrap: anywhere; }
+.guide.ok { color: #7af0b0; }
+.guide.bad { color: #ff7aa8; }

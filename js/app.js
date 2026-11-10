@@ -1,6 +1,7 @@
-/* Carrom controller: menus, match setup, striker placement and aiming (mouse and touch), the physics loop,
-   shot resolution, computer turns, the score panel and the game-over screen. Rules live in rules.js,
-   physics in physics.js, the computer in ai.js, drawing in render.js, sound in sound.js. Runs on load. */
+/* Carrom controller: menus, match setup, sides and colours, striker placement and aiming (mouse and touch) with a
+   first-contact guide, the physics loop, shot resolution, computer turns, the score panel and the game-over screen.
+   Rules live in rules.js, physics in physics.js, the computer in ai.js, drawing in render.js, sound in sound.js.
+   Runs on load. */
 (function () {
   "use strict";
   var cfg = window.CARROM.config;
@@ -13,6 +14,7 @@
   var S = cfg.size;
   var M = RD.MARGIN;
   var TOTAL = S + 2 * M;
+  var FAR = S - cfg.baselineY;   // the top / right / left baselines sit this far from the origin edge
 
   function $(id) { return document.getElementById(id); }
 
@@ -23,26 +25,41 @@
   var world = null;
   var game = null;
   var striker = null;
-  var phase = "menu";          // menu | placing | moving | over
-  var strikerX = (cfg.baselineMin + cfg.baselineMax) / 2;
-  var drag = null;             // { mode: 'slide' | 'aim' } while the pointer is down
-  var aim = { show: false, sx: 0, sy: 0, angle: 0, power: 0, pulling: false, pullX: 0, pullY: 0 };
+  var phase = "menu";           // menu | placing | moving | over
+  var sides = [];               // one side per seat: [{ side, seat }]
+  var strikerT = [];            // per seat: where the striker sits along its side (x or y)
+  var drag = null;              // { mode: 'slide' | 'aim' } while the pointer is down
+  var aim = { show: false, sx: 0, sy: 0, dirX: 0, dirY: 0, power: 0, pulling: false, pullX: 0, pullY: 0 };
+  var guide = null;             // first-contact preview for the current aim
   var shotPocketed = [];
+  var shotTouch = null;         // the first coin or queen the striker touched in this shot
   var shotStart = 0;
   var acc = 0;
   var last = 0;
   var aiTimer = 0;
-  var lastMessage = "";
 
-  // ---------- Board layout: queen in the centre, 6 coins in the inner ring, 12 in the outer ring ----------
+  // ---------- Board layout ----------
+  function sidePos(side, t) {
+    if (side === 0) return { x: t, y: cfg.baselineY };
+    if (side === 2) return { x: t, y: FAR };
+    if (side === 1) return { x: cfg.baselineY, y: t };
+    return { x: FAR, y: t };
+  }
+
+  function tangentOf(side, p) {
+    return side === 0 || side === 2 ? p.x : p.y;
+  }
+
+  function clampT(t) {
+    return Math.max(cfg.baselineMin, Math.min(cfg.baselineMax, t));
+  }
+
   function layoutBoard() {
     var c = S / 2;
-    var pieces = [];
     var id = 0;
     function coin(kind, colour, x, y) {
-      var b = world.add({ id: ++id, kind: kind, colour: colour, x: x, y: y, r: kind === "queen" ? cfg.coinR : cfg.coinR });
+      var b = world.add({ id: ++id, kind: kind, colour: colour, x: x, y: y, r: cfg.coinR });
       b.home = { x: x, y: y };
-      pieces.push(b);
     }
     coin("queen", "queen", c, c);
     for (var k = 0; k < 6; k++) {
@@ -53,7 +70,6 @@
       var a2 = (j / 12) * Math.PI * 2;
       coin("coin", j % 2 === 0 ? "black" : "white", c + Math.cos(a2) * 66, c + Math.sin(a2) * 66);
     }
-    return pieces;
   }
 
   function newWorld() {
@@ -64,19 +80,22 @@
   }
 
   // ---------- Matches ----------
+  // players: [{ name, computer, difficulty, colour }]. Seat i plays from sides[i].side.
   function startMatch(players) {
     stopTimers();
+    var sideIds = players.length === 4 ? [0, 1, 2, 3] : [0, 2];
+    sides = players.map(function (p, i) { return { side: sideIds[i], seat: i }; });
     world = newWorld();
     layoutBoard();
-    striker = world.add({ id: 0, kind: "striker", colour: "striker", x: strikerX, y: cfg.baselineY, r: cfg.strikerR, m: 1.2 });
-    striker.home = { x: strikerX, y: cfg.baselineY };
+    striker = world.add({ id: 0, kind: "striker", colour: "striker", x: S / 2, y: cfg.baselineY, r: cfg.strikerR, m: 1.2 });
+    strikerT = players.map(function () { return S / 2; });
     game = R.createGame(players);
     $("menu").hidden = true;
     $("over").hidden = true;
     $("game").hidden = false;
     sizeCanvas();
-    setMessage("Match started. " + game.players[0].name + " goes first.");
     buildScoreboard();
+    setMessage("Match started. " + game.players[0].name + " goes first.");
     beginTurn();
   }
 
@@ -85,15 +104,16 @@
     aiTimer = 0;
   }
 
-  function currentPlayer() {
-    return game.players[game.turn];
-  }
+  function currentPlayer() { return game.players[game.turn]; }
+  function currentSide() { return sides[game.turn].side; }
 
   function placeStriker() {
+    var side = currentSide();
+    var pos = sidePos(side, strikerT[game.turn]);
     striker.alive = true;
     striker.pocketed = false;
-    striker.x = strikerX;
-    striker.y = cfg.baselineY;
+    striker.x = pos.x;
+    striker.y = pos.y;
     striker.vx = 0;
     striker.vy = 0;
   }
@@ -105,9 +125,9 @@
     var p = currentPlayer();
     if (p.computer) {
       setMessage(p.name + " is thinking…");
-      aiTimer = setTimeout(aiTurn, 900);
+      aiTimer = setTimeout(aiTurn, cfg.thinkMs);
     } else {
-      setMessage(p.name + ": drag the striker along the baseline, then pull back to shoot.");
+      setMessage(p.name + ": drag the striker along your line, then pull back to shoot.");
     }
     updateScoreboard();
   }
@@ -116,7 +136,7 @@
     return phase === "placing" && !currentPlayer().computer;
   }
 
-  // ---------- Input: mouse and touch on the canvas ----------
+  // ---------- Input: mouse and touch ----------
   function toBoard(e) {
     var r = canvas.getBoundingClientRect();
     return {
@@ -125,23 +145,67 @@
     };
   }
 
-  function setStrikerX(x) {
-    strikerX = Math.max(cfg.baselineMin, Math.min(cfg.baselineMax, x));
-    if (striker) striker.x = strikerX;
+  // Is the pointer close to the current player's striker line?
+  function nearOwnLine(p) {
+    var side = currentSide();
+    var lineDist = side === 0 ? Math.abs(p.y - cfg.baselineY)
+      : side === 2 ? Math.abs(p.y - FAR)
+      : side === 1 ? Math.abs(p.x - cfg.baselineY)
+      : Math.abs(p.x - FAR);
+    var t = tangentOf(side, p);
+    return lineDist < 70 && t > cfg.baselineMin - 40 && t < cfg.baselineMax + 40;
   }
 
   function updateAim(p) {
     var dx = striker.x - p.x;
     var dy = striker.y - p.y;
-    var len = Math.sqrt(dx * dx + dy * dy);
+    var len = Math.sqrt(dx * dx + dy * dy) || 1;
     aim.show = true;
     aim.pulling = true;
     aim.sx = striker.x;
     aim.sy = striker.y;
+    aim.dirX = dx / len;
+    aim.dirY = dy / len;
     aim.pullX = p.x;
     aim.pullY = p.y;
-    aim.power = Math.min(1, len / 170);
-    aim.angle = Math.atan2(dx, -dy);
+    aim.power = Math.min(1, len / cfg.pullFull);
+    guide = firstContact(striker.x, striker.y, aim.dirX, aim.dirY);
+  }
+
+  // The first coin the striker would touch along a ray. Returns { x, y, colour, ok } or null.
+  function firstContact(sx, sy, dx, dy) {
+    var target = currentPlayer().colour;
+    var best = null;
+    var bestT = Infinity;
+    world.live().forEach(function (b) {
+      if (b === striker || b.kind === "striker") return;
+      var rr = striker.r + b.r;
+      var fx = sx - b.x, fy = sy - b.y;
+      var bq = 2 * (fx * dx + fy * dy);
+      var cq = fx * fx + fy * fy - rr * rr;
+      var disc = bq * bq - 4 * cq;
+      if (disc < 0) return;
+      var t = (-bq - Math.sqrt(disc)) / 2;
+      if (t > 0 && t < bestT) { bestT = t; best = b; }
+    });
+    if (!best) return null;
+    var colour = best.kind === "queen" ? "queen" : best.colour;
+    var free = !colourLeft(target);
+    return { x: best.x, y: best.y, colour: colour, ok: free || best.kind === "queen" || best.colour === target };
+  }
+
+  // Is any coin of this colour still on the board? If not, the first-touch rule is waived.
+  function colourLeft(colour) {
+    return world.live().some(function (b) { return b.kind === "coin" && b.colour === colour; });
+  }
+
+  function setStrikerFromPointer(p) {
+    var side = currentSide();
+    var t = clampT(tangentOf(side, p));
+    strikerT[game.turn] = t;
+    var pos = sidePos(side, t);
+    striker.x = pos.x;
+    striker.y = pos.y;
   }
 
   canvas.addEventListener("pointerdown", function (e) {
@@ -153,48 +217,47 @@
     if (dist < striker.r + 26) {
       drag = { mode: "aim" };
       updateAim(p);
-    } else if (p.y > cfg.baselineY - 70) {
+    } else if (nearOwnLine(p)) {
       drag = { mode: "slide" };
-      setStrikerX(p.x);
+      setStrikerFromPointer(p);
     } else {
       drag = null;
     }
-    schedule();
   });
 
   canvas.addEventListener("pointermove", function (e) {
     if (!drag) return;
     var p = toBoard(e);
-    if (drag.mode === "slide") setStrikerX(p.x);
+    if (drag.mode === "slide") setStrikerFromPointer(p);
     else updateAim(p);
-    schedule();
   });
 
-  function endDrag(e) {
+  function endDrag() {
     if (!drag) return;
-    if (drag.mode === "aim" && aim.pulling && aim.power > 0.06) {
-      launch(aim.angle, aim.power);
+    if (drag.mode === "aim" && aim.pulling && aim.power > 0.05) {
+      launch(aim.dirX * aim.power * cfg.maxShot, aim.dirY * aim.power * cfg.maxShot, aim.power);
     }
     drag = null;
     aim.show = false;
     aim.pulling = false;
-    schedule();
+    guide = null;
   }
   canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", function () { drag = null; aim.show = false; aim.pulling = false; schedule(); });
+  canvas.addEventListener("pointercancel", function () { drag = null; aim.show = false; aim.pulling = false; guide = null; });
 
   // ---------- Shooting ----------
-  function launch(angle, power) {
-    var v = AI.velocityFor(angle, power, cfg.maxShot);
-    striker.vx = v.vx;
-    striker.vy = v.vy;
+  function launch(vx, vy, power) {
+    striker.vx = vx;
+    striker.vy = vy;
     SND.flick(power);
     phase = "moving";
     shotPocketed = [];
+    shotTouch = null;
     shotStart = performance.now();
     acc = 0;
     aim.show = false;
     aim.pulling = false;
+    guide = null;
     setMessage("Shot!");
   }
 
@@ -205,17 +268,25 @@
       else if (ev.type === "pocket") {
         SND.pocket();
         shotPocketed.push(ev.body);
+      } else if (ev.type === "contact") {
+        if (shotTouch) return;
+        var other = ev.a.kind === "striker" ? ev.b : (ev.b.kind === "striker" ? ev.a : null);
+        if (other && other.kind !== "striker" && other.alive) shotTouch = other;
       }
     });
   }
 
   function finishShot() {
     phase = "resolving";
-    var foul = shotPocketed.some(function (b) { return b.kind === "striker"; });
+    var target = currentPlayer().colour;
+    var striked = shotPocketed.some(function (b) { return b.kind === "striker"; });
+    var free = !colourLeft(target);
+    var touchOk = free || !!(shotTouch && (shotTouch.kind === "queen" || shotTouch.colour === target));
+    var foul = striked || !touchOk;
     var coinsIn = shotPocketed.filter(function (b) { return b.kind !== "striker"; });
     var onBoard = world.live().filter(function (b) { return b.kind !== "striker"; }).length;
     if (foul) onBoard += coinsIn.length;   // coins from a foul go back on the board
-    var res = R.resolveShot(game, shotPocketed, onBoard);
+    var res = R.resolveShot(game, shotPocketed, onBoard, { firstTouch: shotTouch, free: free });
     if (res.foul) SND.foul();
 
     res.returned.forEach(function (b) {
@@ -246,27 +317,31 @@
     if (phase !== "placing") return;
     var p = currentPlayer();
     var diff = cfg.difficulty[p.difficulty] || cfg.difficulty.medium;
-    var shot = AI.planShot(world.bodies(), world.pockets, {
+    var shot = AI.planForSide(world.bodies(), world.pockets, {
       size: S, baselineY: cfg.baselineY, baselineMin: cfg.baselineMin, baselineMax: cfg.baselineMax,
       strikerR: cfg.strikerR, coinR: cfg.coinR, maxShot: cfg.maxShot, friction: cfg.friction, difficulty: diff
-    }, Math.random);
-    var angle = shot ? shot.angle : 0;
-    var power = shot ? shot.power : 0.3;
-    if (shot) setStrikerX(shot.startX);
-    placeStriker();
-    phase = "placing";
-    setMessage(p.name + " aims…");
-    aiTimer = setTimeout(function () {
-      aiTimer = 0;
-      if (phase === "placing") launch(angle, power);
-    }, 700);
+    }, Math.random, currentSide(), colourLeft(p.colour) ? p.colour : "any");
+    if (shot) {
+      strikerT[game.turn] = tangentOf(currentSide(), { x: shot.startX, y: shot.startY });
+      striker.x = shot.startX;
+      striker.y = shot.startY;
+      setMessage(p.name + " aims to hit " + p.colour + "…");
+      aiTimer = setTimeout(function () {
+        aiTimer = 0;
+        if (phase === "placing") launch(shot.dirX * shot.power * cfg.maxShot, shot.dirY * shot.power * cfg.maxShot, shot.power);
+      }, cfg.launchMs);
+    } else {
+      setMessage(p.name + " has no shot and passes.");
+      aiTimer = setTimeout(function () {
+        aiTimer = 0;
+        if (phase === "placing") {
+          launch(0, -0.3 * cfg.maxShot, 0.3);
+        }
+      }, cfg.launchMs);
+    }
   }
 
   // ---------- Frame loop ----------
-  function schedule() {
-    // The loop below redraws every frame, so nothing else is needed here.
-  }
-
   function frame(now) {
     requestAnimationFrame(frame);
     var dt = Math.min(0.05, (now - last) / 1000);
@@ -281,14 +356,45 @@
       var timedOut = (now - shotStart) / 1000 > cfg.settleTimeoutS;
       if (world.settled() || timedOut) finishShot();
     }
-    RD.draw(ctx, { pieces: world ? world.bodies() : [], cfg: cfg, colours: cfg.colours, aim: aim });
+    RD.draw(ctx, {
+      pieces: world ? world.bodies() : [],
+      cfg: cfg,
+      colours: cfg.colours,
+      sides: sideViews(),
+      aim: aim,
+      guide: guide
+    });
     updatePower();
+  }
+
+  function sideViews() {
+    if (!game) return [];
+    return sides.map(function (s, i) {
+      var p = game.players[i];
+      return {
+        side: s.side,
+        label: "PLAYER " + (i + 1) + " · HIT " + p.colour.toUpperCase(),
+        active: !game.over,
+        current: !game.over && i === game.turn && phase !== "over"
+      };
+    });
   }
 
   function updatePower() {
     var pct = aim.pulling ? Math.round(aim.power * 100) : 0;
     $("power-fill").style.width = pct + "%";
     $("power-text").textContent = pct + "%";
+    var g = $("guide");
+    if (guide) {
+      g.textContent = "First hit: " + guide.colour.toUpperCase() + (guide.ok ? " ✓" : " ✗ (you must hit " + currentPlayer().colour.toUpperCase() + ")");
+      g.className = "guide " + (guide.ok ? "ok" : "bad");
+    } else if (game && phase === "placing" && !currentPlayer().computer) {
+      g.textContent = "Hit " + currentPlayer().colour.toUpperCase() + " first.";
+      g.className = "guide";
+    } else {
+      g.textContent = "";
+      g.className = "guide";
+    }
   }
 
   // ---------- Canvas sizing ----------
@@ -303,7 +409,6 @@
 
   // ---------- Screens and HUD ----------
   function setMessage(text) {
-    lastMessage = text;
     $("status").textContent = text;
   }
 
@@ -315,9 +420,10 @@
       card.className = "pl";
       card.setAttribute("data-idx", String(i));
       var name = document.createElement("strong");
-      name.textContent = p.name;
+      name.textContent = "Player " + (i + 1) + (p.name && p.name !== "Player " + (i + 1) ? " · " + p.name : "");
       var tag = document.createElement("small");
-      tag.textContent = p.computer ? "Computer · " + (cfg.difficulty[p.difficulty] || cfg.difficulty.medium).label : "Player";
+      tag.textContent = (p.computer ? "Computer · " + (cfg.difficulty[p.difficulty] || cfg.difficulty.medium).label : "Human") +
+        " · hits " + p.colour.toUpperCase();
       var score = document.createElement("span");
       score.className = "score";
       score.setAttribute("data-score", String(i));
@@ -326,6 +432,7 @@
       card.appendChild(score);
       box.appendChild(card);
     });
+    updateScoreboard();
   }
 
   function updateScoreboard() {
@@ -337,7 +444,7 @@
       var s = card.querySelector("[data-score]");
       if (s) s.textContent = String(p.score);
     });
-    $("turn-text").textContent = game.over ? "Game over" : (currentPlayer().name === "You" ? "Your turn" : currentPlayer().name + "'s turn");
+    $("turn-text").textContent = game.over ? "Game over" : "Player " + (game.turn + 1) + "'s turn · hit " + currentPlayer().colour.toUpperCase();
   }
 
   function showOver() {
@@ -347,15 +454,15 @@
       .sort(function (a, b) { return b.p.score - a.p.score; })
       .forEach(function (x, rank) {
         var li = document.createElement("li");
-        li.textContent = "#" + (rank + 1) + "  " + x.p.name + ": " + x.p.score + " points";
+        li.textContent = "#" + (rank + 1) + "  Player " + (x.i + 1) + " · " + x.p.name + ": " + x.p.score + " points";
         list.appendChild(li);
       });
     var w = game.players[game.winner];
-    $("winner-text").textContent = w ? w.name + " wins!" : "Game over";
+    $("winner-text").textContent = w ? "Player " + (game.winner + 1) + " wins!" : "Game over";
     $("over").hidden = false;
   }
 
-  // Menu: choose a mode, then start
+  // ---------- Menu ----------
   var mode = "solo";
   function setMode(m) {
     mode = m;
@@ -372,7 +479,7 @@
         var lab = document.createElement("label");
         lab.className = "field";
         var sp = document.createElement("span");
-        sp.textContent = "Player " + (i + 1) + " name";
+        sp.textContent = "Player " + (i + 1) + " name (hits " + cfg.seatColours[i].toUpperCase() + ")";
         var inp = document.createElement("input");
         inp.type = "text";
         inp.maxLength = 20;
@@ -393,15 +500,16 @@
     SND.unlock();
     var players;
     if (mode === "solo") {
-      var diff = $("difficulty").value;
+      var you = $("your-colour").value === "black" ? "black" : "white";
+      var cpu = you === "white" ? "black" : "white";
       players = [
-        { name: "You", computer: false },
-        { name: "Computer", computer: true, difficulty: diff }
+        { name: "You", computer: false, colour: you },
+        { name: "Computer", computer: true, difficulty: $("difficulty").value, colour: cpu }
       ];
     } else {
       var inputs = document.querySelectorAll("[data-name]");
       players = Array.prototype.map.call(inputs, function (inp, i) {
-        return { name: (inp.value || "").trim() || ("Player " + (i + 1)), computer: false };
+        return { name: (inp.value || "").trim() || ("Player " + (i + 1)), computer: false, colour: cfg.seatColours[i] };
       });
     }
     startMatch(players);
@@ -437,8 +545,6 @@
   });
   $("sound-btn").textContent = SND.isMuted() ? "Sound off" : "Sound on";
   $("sound-btn").setAttribute("aria-pressed", String(!SND.isMuted()));
-
-  $("difficulty").addEventListener("change", function () {});
 
   // ---------- Start ----------
   window.addEventListener("resize", sizeCanvas);
