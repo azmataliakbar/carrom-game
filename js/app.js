@@ -198,9 +198,10 @@
   function colourLeft(colour) {
     return world.live().some(function (b) { return b.kind === "coin" && b.colour === colour; });
   }
-  // The first shot of the match is the break: any coin may be hit first.
+  // A free shot (no colour rule) only when no coin of the player's colour is left on the board.
+  // The break follows the same rule, so the guide and the foul check always agree.
   function freeShot(colour) {
-    return game.shots === 0 || !colourLeft(colour);
+    return !colourLeft(colour);
   }
 
   function setStrikerFromPointer(p) {
