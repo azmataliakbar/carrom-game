@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" data-layout="mobile">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Carrom: play against the computer, or with 2 or 4 players on one device. Top-view coloured board, striker and carrom men, with loud, real-feeling sound. Zero dependencies.">
+  <meta name="theme-color" content="#1e0f05">
+  <title>Carrom | Idea By Azmat Ali</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Carrom | Idea By Azmat Ali">
+  <meta property="og:description" content="Play carrom against the computer, or with 2 or 4 players. Top-view board, striker, loud sound.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">&#9679;</span>
+      <div>
+        <h1>Carrom</h1>
+        <p class="tag">Striker · carrom men · pockets</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- Menu -->
+    <section class="menu glass" id="menu" aria-labelledby="h-menu">
+      <h2 id="h-menu">Choose a game</h2>
+      <div class="modes" role="group" aria-label="Game mode">
+        <button type="button" class="mode" data-mode="solo" aria-pressed="true">
+          <strong>1 Player</strong><span>You vs the computer</span>
+        </button>
+        <button type="button" class="mode" data-mode="two" aria-pressed="false">
+          <strong>2 Players</strong><span>Same device, take turns</span>
+        </button>
+        <button type="button" class="mode" data-mode="four" aria-pressed="false">
+          <strong>4 Players</strong><span>Free-for-all, same device</span>
+        </button>
+      </div>
+
+      <div id="solo-options" class="options">
+        <label class="field">
+          <span>Computer level</span>
+          <select id="difficulty">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Expert</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="names-options" class="options" hidden>
+        <div id="names" class="names"></div>
+      </div>
+
+      <button type="button" class="btn big" id="start-btn">Start match</button>
+      <p class="hint">Scoring: black coin 1, white coin 2, queen 5. Pocket the striker and you lose a point and the coins go back.</p>
+    </section>
+
+    <!-- Match -->
+    <section class="game" id="game" hidden aria-labelledby="h-game">
+      <h2 class="sr" id="h-game">Match</h2>
+
+      <div class="hud glass">
+        <div class="scoreboard" id="scoreboard"></div>
+        <div class="turn" id="turn-text" aria-live="polite"></div>
+      </div>
+
+      <div class="board-wrap">
+        <canvas id="board" aria-label="Carrom board, top view" role="img"></canvas>
+      </div>
+
+      <div class="power glass" aria-hidden="true">
+        <span>Power</span>
+        <div class="meter"><div class="fill" id="power-fill"></div></div>
+        <span id="power-text">0%</span>
+      </div>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <div class="controls glass">
+        <button type="button" class="btn ghost small" id="sound-btn" aria-pressed="true">Sound on</button>
+        <label class="vol">
+          <span>Volume</span>
+          <input id="vol" type="range" min="0" max="100" step="1" value="90">
+        </label>
+        <button type="button" class="btn ghost small danger" id="quit-btn">Leave match</button>
+      </div>
+      <p class="hint">Drag the striker along the baseline to place it. Press on the striker, pull back, and let go to shoot.</p>
+    </section>
+
+    <!-- Game over -->
+    <div class="overlay" id="over" hidden>
+      <div class="card glass win">
+        <h2 id="winner-text"></h2>
+        <ol class="results" id="results"></ol>
+        <button type="button" class="btn big" id="again-btn">Back to menu</button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span class="watermark">Idea By: Azmat Ali</span>
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
