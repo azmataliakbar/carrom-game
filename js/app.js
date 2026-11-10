@@ -190,13 +190,17 @@
     });
     if (!best) return null;
     var colour = best.kind === "queen" ? "queen" : best.colour;
-    var free = !colourLeft(target);
+    var free = freeShot(target);
     return { x: best.x, y: best.y, colour: colour, ok: free || best.kind === "queen" || best.colour === target };
   }
 
   // Is any coin of this colour still on the board? If not, the first-touch rule is waived.
   function colourLeft(colour) {
     return world.live().some(function (b) { return b.kind === "coin" && b.colour === colour; });
+  }
+  // The first shot of the match is the break: any coin may be hit first.
+  function freeShot(colour) {
+    return game.shots === 0 || !colourLeft(colour);
   }
 
   function setStrikerFromPointer(p) {
@@ -280,7 +284,7 @@
     phase = "resolving";
     var target = currentPlayer().colour;
     var striked = shotPocketed.some(function (b) { return b.kind === "striker"; });
-    var free = !colourLeft(target);
+    var free = freeShot(target);
     var touchOk = free || !!(shotTouch && (shotTouch.kind === "queen" || shotTouch.colour === target));
     var foul = striked || !touchOk;
     var coinsIn = shotPocketed.filter(function (b) { return b.kind !== "striker"; });
@@ -320,7 +324,20 @@
     var shot = AI.planForSide(world.bodies(), world.pockets, {
       size: S, baselineY: cfg.baselineY, baselineMin: cfg.baselineMin, baselineMax: cfg.baselineMax,
       strikerR: cfg.strikerR, coinR: cfg.coinR, maxShot: cfg.maxShot, friction: cfg.friction, difficulty: diff
-    }, Math.random, currentSide(), colourLeft(p.colour) ? p.colour : "any");
+    }, Math.random, currentSide(), freeShot(p.colour) ? "any" : p.colour);
+    if (!shot && !freeShot(p.colour)) {
+      shot = AI.planForSide(world.bodies(), world.pockets, {
+        size: S, baselineY: cfg.baselineY, baselineMin: cfg.baselineMin, baselineMax: cfg.baselineMax,
+        strikerR: cfg.strikerR, coinR: cfg.coinR, maxShot: cfg.maxShot, friction: cfg.friction, difficulty: diff
+      }, Math.random, currentSide(), "any");
+    }
+    if (!shot) {
+      // Nothing else is possible: hit the nearest goat rather than the empty board.
+      shot = AI.planForSide(world.bodies(), world.pockets, {
+        size: S, baselineY: cfg.baselineY, baselineMin: cfg.baselineMin, baselineMax: cfg.baselineMax,
+        strikerR: cfg.strikerR, coinR: cfg.coinR, maxShot: cfg.maxShot, friction: cfg.friction, difficulty: diff
+      }, Math.random, currentSide(), p.colour, { goat: true });
+    }
     if (shot) {
       strikerT[game.turn] = tangentOf(currentSide(), { x: shot.startX, y: shot.startY });
       striker.x = shot.startX;
@@ -388,6 +405,9 @@
     if (guide) {
       g.textContent = "First hit: " + guide.colour.toUpperCase() + (guide.ok ? " ✓" : " ✗ (you must hit " + currentPlayer().colour.toUpperCase() + ")");
       g.className = "guide " + (guide.ok ? "ok" : "bad");
+    } else if (aim.pulling) {
+      g.textContent = "No coin on this line: the striker will miss.";
+      g.className = "guide bad";
     } else if (game && phase === "placing" && !currentPlayer().computer) {
       g.textContent = "Hit " + currentPlayer().colour.toUpperCase() + " first.";
       g.className = "guide";
@@ -545,6 +565,21 @@
   });
   $("sound-btn").textContent = SND.isMuted() ? "Sound off" : "Sound on";
   $("sound-btn").setAttribute("aria-pressed", String(!SND.isMuted()));
+
+  // Read-only view for tests and debugging.
+  window.CARROM.debug = function () {
+    return {
+      phase: phase,
+      turn: game ? game.turn : -1,
+      striker: striker ? { x: striker.x, y: striker.y, vx: striker.vx, vy: striker.vy, alive: striker.alive } : null,
+      aim: { show: aim.show, dirX: aim.dirX, dirY: aim.dirY, power: aim.power },
+      touch: shotTouch ? { kind: shotTouch.kind, colour: shotTouch.colour, x: shotTouch.x, y: shotTouch.y } : null,
+      pocketed: shotPocketed.map(function (b) { return b.kind + ":" + b.colour; }),
+      coins: world ? world.bodies().filter(function (b) { return b.kind !== "striker"; }).map(function (b) {
+        return { k: b.kind, c: b.colour, x: Math.round(b.x), y: Math.round(b.y), alive: b.alive };
+      }) : []
+    };
+  };
 
   // ---------- Start ----------
   window.addEventListener("resize", sizeCanvas);

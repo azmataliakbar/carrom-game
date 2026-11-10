@@ -107,7 +107,13 @@
             if (o.kind === "coin" && want !== "any" && o.colour !== want) wrongFirst = true;
           }
         });
-        var blocked = anyBlock || wrongFirst;
+        // The coin's own path into the pocket must be clear too, or it scatters into the other coins.
+        var pathBlocked = false;
+        pieces.forEach(function (o) {
+          if (o === t || !o.alive || o.kind === "striker") return;
+          if (segDist(o.x, o.y, t.x, t.y, p.x, p.y) < o.r + t.r) pathBlocked = true;
+        });
+        var blocked = anyBlock || wrongFirst || pathBlocked;
         var score = value * (blocked ? cfg.difficulty.blockPenalty : 1) * (direct ? 1 : 0.6) - travel / 5000;
         candidates.push({
           target: t, pocket: p, pocketDist: d, startX: startX, angle: angle, travel: travel,
@@ -123,6 +129,11 @@
     if (cfg.difficulty.blockPenalty >= 1) {
       var clean = candidates.filter(function (c) { return !c.blocked; });
       if (clean.length) best = clean[0];
+      else {
+        // No clean pocket shot: play a safety shot rather than a blocked one.
+        var sf = planSafety(pieces, cfg, rand);
+        if (sf) return sf;
+      }
     }
 
     // The best pocket shot would touch the wrong colour first: play a safety shot instead.
@@ -180,10 +191,31 @@
     return { startX: best.sx, angle: angle, power: power, target: best.t, pocket: null, value: 0, blocked: false, safety: true };
   }
 
+  // Last resort: aim at the nearest coin (own colour preferred). Whatever is in the way gets hit, so the striker
+  // touches a goat rather than the empty board.
+  function planGoatLocal(pieces, cfg, rand) {
+    var sy = cfg.baselineY;
+    var best = null;
+    pieces.forEach(function (t) {
+      if (!t.alive || (t.kind !== "coin" && t.kind !== "queen")) return;
+      var sx = Math.max(cfg.baselineMin, Math.min(cfg.baselineMax, t.x));
+      var dx = t.x - sx, dy = t.y - sy;
+      if (dy >= -20) return;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      var own = cfg.targetColour && t.colour === cfg.targetColour ? 0 : 1;
+      var key = own * 100000 + len;
+      if (!best || key < best.key) best = { t: t, sx: sx, dx: dx, dy: dy, len: len, key: key };
+    });
+    if (!best) return null;
+    var power = Math.max(0.3, Math.min(0.75, 0.35 + best.len / 2400));
+    var angle = Math.atan2(best.dx, -best.dy) + gauss(rand) * cfg.difficulty.angle;
+    return { startX: best.sx, angle: angle, power: power, target: best.t, pocket: null, value: 0, blocked: true, safety: true, goat: true };
+  }
+
   // The shot for one side of the real board. Returns world coordinates:
   // { startX, startY, dirX, dirY (unit direction of travel), power, value, blocked } or null.
   // cfg.size and cfg.baselineY are the real board values (the side's baseline is at baselineY from its edge).
-  function planForSide(pieces, pockets, cfg, rand, side, colour) {
+  function planForSide(pieces, pockets, cfg, rand, side, colour, opts) {
     var S = cfg.size;
     var local = pieces.map(function (p) {
       var q = toLocal(S, side, p.x, p.y);
@@ -192,6 +224,7 @@
     var lp = pockets.map(function (p) { var q = toLocal(S, side, p.x, p.y); return { x: q.x, y: q.y }; });
     var lcfg = Object.assign({}, cfg, { targetColour: colour });
     var shot = planLocal(local, lp, lcfg, rand);
+    if (!shot && opts && opts.goat) shot = planGoatLocal(local, lcfg, rand);
     if (!shot) return null;
     var start = fromLocal(S, side, shot.startX, cfg.baselineY);
     var dl = { x: Math.sin(shot.angle), y: -Math.cos(shot.angle) };
@@ -222,6 +255,8 @@
   return {
     VALUE: VALUE,
     planShot: planShot,
+    planSafety: planSafety,
+    planGoatLocal: planGoatLocal,
     planForSide: planForSide,
     velocityFor: velocityFor,
     toLocal: toLocal,
