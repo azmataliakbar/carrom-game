@@ -211,7 +211,7 @@
         : 120 + a.power * 420;
       ctx.save();
       ctx.setLineDash([8, 7]);
-      ctx.strokeStyle = "rgba(255, 225, 77, " + (0.45 + 0.5 * a.power).toFixed(2) + ")";
+      ctx.strokeStyle = "rgba(0, 0, 0, " + (0.6 + 0.4 * a.power).toFixed(2) + ")";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(x, y);
