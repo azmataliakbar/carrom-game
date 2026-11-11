@@ -18,6 +18,17 @@
     ctx.closePath();
   }
 
+  // Distance from (x, y) along (dx, dy) to the edge of the playing field (0..800 in board units).
+  function distToEdge(x, y, dx, dy) {
+    var size = 800;
+    var t = Infinity;
+    if (dx > 1e-6) t = Math.min(t, (size - x) / dx);
+    else if (dx < -1e-6) t = Math.min(t, (0 - x) / dx);
+    if (dy > 1e-6) t = Math.min(t, (size - y) / dy);
+    else if (dy < -1e-6) t = Math.min(t, (0 - y) / dy);
+    return isFinite(t) ? Math.max(0, t) : 0;
+  }
+
   // Mixes a #rrggbb colour toward white (amount > 0) or black (amount < 0).
   function shade(hex, amount) {
     var h = /^#([0-9a-f]{6})$/i.test(hex) ? hex.slice(1) : "888888";
@@ -206,9 +217,8 @@
     if (a && a.show) {
       var x = a.sx + MARGIN;
       var y = a.sy + MARGIN;
-      var len = view.guide && view.guide.hitX !== undefined
-        ? Math.sqrt(Math.pow(view.guide.hitX - a.sx, 2) + Math.pow(view.guide.hitY - a.sy, 2))
-        : 120 + a.power * 420;
+      // The line runs from the striker to the edge of the playing field, so it shows where the shot can go.
+      var len = distToEdge(a.sx, a.sy, a.dirX, a.dirY);
       ctx.save();
       ctx.setLineDash([8, 7]);
       ctx.strokeStyle = "rgba(0, 0, 0, " + (0.6 + 0.4 * a.power).toFixed(2) + ")";
