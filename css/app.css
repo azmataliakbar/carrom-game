@@ -268,6 +268,13 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   user-select: none;
 }
 
+/* Small phones: the "Powered by" badge from Netlify sits at the bottom right and covered the
+   credit. On phones the credit moves to the bottom left, and only the name is shown. */
+@media (max-width: 480px) {
+  .footer { justify-content: flex-start; padding-left: 16px; }
+  .idea-by { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fill { transition: none; }
 }
